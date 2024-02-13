@@ -128,8 +128,8 @@ function Get-InstalledApps {
 }
 
 # Check for active installers and wait if needed to help prevent false alerts
-Write-Output "Waiting up to $TimeToWait minutes for active installers to complete..."
 while ($(Get-Process msiexec -ErrorAction SilentlyContinue).count -gt 1 -or $(Get-Process '*setup*','*install*','choco','winget' -ErrorAction SilentlyContinue).count -ge 1 -and $minutes -lt $TimeToWait) {
+    if (-not $minutes) { Write-Output "Waiting up to $TimeToWait minutes for active installers to complete..." }
     Start-Sleep 60
     $minutes = $minutes+1
 }
