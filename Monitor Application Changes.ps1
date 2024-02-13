@@ -22,7 +22,6 @@ Future development ideas:
     - 32/64bit indicator?
     - Test behavior in Terminal Server environment
     - Improve error handling
-    - Sort by secondary column?
 
 Changelog:
   1.0 / 2024-02-12 - Initial release
