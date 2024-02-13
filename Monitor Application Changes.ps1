@@ -1,4 +1,4 @@
-<# Monitor Application Changes v1.0 by Isaac Good
+<# Monitor Application Changes v1.1 by Isaac Good
 Including notification options for Syncro RMM
 
 Created because other scripts have various deficiencies:
@@ -22,9 +22,17 @@ Future development ideas:
     - 32/64bit indicator?
     - Test behavior in Terminal Server environment
     - Improve error handling
+    - Improve table output? (border/text alignment)
 
 Changelog:
-  1.0 / 2024-02-12 - Initial release
+    1.1 / 2024-02-13
+        Added - Computer name in email notification subject & body
+        Added - $OutputListHTML for better looking list emails
+        Changed - $OutputList to $OutputListText for naming consistency and cleaned up formatting section and documentation
+        Fixed - Preserve $OutputListText spaces by replacing with ALT-255
+        Fixed - $OutputTableHTML looks bad in tickets (I'm sure it used to work?), switched to use $OutputTableText instead
+        Fixed - Ticket created but fails adding comment
+    1.0 / 2024-02-12 - Initial release
 #>
 
 if ($null -ne $env:SyncroModule) { Import-Module $env:SyncroModule -DisableNameChecking }
@@ -52,11 +60,9 @@ $ExcludeUninstallsList = @('')
 $ExcludeUpdatesList = @('')
 
 <# Output format notes:
-- Table format takes fewer lines and looks nicer, using HTML or text as appropriate for notification type.
-- Alerts in Syncro display properly in table format, but emailed alerts have plain text spacing stripped
-  so list will be more readable for those.
-- List format can be more readable for emails if rich text isn't enabled in Syncro as plain text gets spacing stripped.
+- Table format takes fewer lines and looks nicer as long as lines don't get too long.
 - If you want skinnier table output you can add '-Wrap' to the Format-Table command.
+- HTML, text or CSV is used as appropriate for notification type.
 #>
 
 # Title for notifications
@@ -274,31 +280,32 @@ if ($Output) {
     }
     # Select desired properties and sort
     $Output = $Output | Select-Object $NotifyProperties | Sort-Object -Property $NotifySortBy
-    # Output for script log
+    # Output for console
     $Output | Format-Table | Out-String
-    # List format
-    $OutputList = $Output | Format-List | Out-String
-    # CSV format is used for Log items since they don't support line breaks or HTML, we remove quotes and add pipes to separate lines
-    $OutputCSV = $Output | ConvertTo-Csv -NoTypeInformation | ForEach-Object { $_ + "|" -replace '"', '' }
-    # Table Text format is used for Alerts since they don't support HTML but look fine in Syncro, but emailed alerts get spacing stripped so we replace with ALT-255
+    # Create Text formats (spaces replaced with ALT-255 to preserve formatting)
+    $OutputListText = ($Output | Format-List | Out-String).Replace(' ', ' ')
     $OutputTableText = ($Output | Format-Table | Out-String).Replace(' ', ' ')
-    # Table HTML format works well for email and tickets (assuming rich-text is enabled)
+    # Create HTML formats (works well for email)
+    $OutputListHTML = $Output | ConvertTo-Html -Fragment -As List
     $OutputTableHTML = $Output | ConvertTo-Html -Fragment
+    # Create CSV format (used for Log items since they don't support line breaks or HTML, we remove quotes and add pipes to separate lines)
+    $OutputCSV = $Output | ConvertTo-Csv -NoTypeInformation | ForEach-Object { $_ + "|" -replace '"', '' }
     if ($NotifyAlert) {
         if ($NotifyAlertFormat -eq 'table') { Rmm-Alert -Category $NotifyTitle -Body "$OutputTableText" }
-        if ($NotifyAlertFormat -eq 'list') { Rmm-Alert -Category $NotifyTitle -Body "$OutputList" }
+        if ($NotifyAlertFormat -eq 'list') { Rmm-Alert -Category $NotifyTitle -Body "$OutputListText" }
+    }
+    if ($NotifyEmail) {
+        if ($NotifyEmailFormat -eq 'table') { Send-Email -To $NotifyEmailAddress -Subject "$NotifyTitle - $env:ComputerName" -Body "$env:ComputerName`n`n$OutputTableHTML" }
+        if ($NotifyEmailFormat -eq 'list') { Send-Email -To $NotifyEmailAddress -Subject "$NotifyTitle - $env:ComputerName" -Body "$env:ComputerName`n`n$OutputListHTML" }
     }
     if ($NotifyLog) {
         Log-Activity -Message $NotifyTitle -EventName "$OutputCSV"
     }
-    if ($NotifyEmail) {
-        if ($NotifyEmailFormat -eq 'table') { Send-Email -To $NotifyEmailAddress -Subject $NotifyTitle -Body "$OutputTableHTML" }
-        if ($NotifyEmailFormat -eq 'list') { Send-Email -To $NotifyEmailAddress -Subject $NotifyTitle -Body "$OutputList" }
-    }
     if ($NotifyTicket) {
-        $TicketID = (Create-Syncro-Ticket -Subject $NotifyTitle -IssueType "Other" -Status "New").Ticket.ID
-        if ($NotifyTicketFormat -eq 'table') { Create-Syncro-Ticket-Comment -TicketIdOrNumber $TicketID -Subject $NotifyTitle -Body "$OutputTableHTML" -Hidden "$NotifyTicketHidden" -DoNotEmail "$NotifyTicketDoNotEmail" }
-        if ($NotifyTicketFormat -eq 'list') { Create-Syncro-Ticket-Comment -TicketIdOrNumber $TicketID -Subject $NotifyTitle -Body "$OutputList" -Hidden "$NotifyTicketHidden" -DoNotEmail "$NotifyTicketDoNotEmail" }
+        $Ticket = Create-Syncro-Ticket -Subject $NotifyTitle -IssueType "Other" -Status "New"
+        $TicketID = $Ticket.ticket.id
+        if ($NotifyTicketFormat -eq 'table') { Create-Syncro-Ticket-Comment -TicketIdOrNumber $TicketID -Subject $NotifyTitle -Body "$OutputTableText" -Hidden "$NotifyTicketHidden" -DoNotEmail "$NotifyTicketDoNotEmail" }
+        if ($NotifyTicketFormat -eq 'list') { Create-Syncro-Ticket-Comment -TicketIdOrNumber $TicketID -Subject $NotifyTitle -Body "$OutputListText" -Hidden "$NotifyTicketHidden" -DoNotEmail "$NotifyTicketDoNotEmail" }
     }
 } else {
     Write-Host "No application changes found"
